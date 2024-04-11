@@ -1,0 +1,13 @@
+menu "Audio HAL"
+
+  choice CUSTOM_AUDIO_BOARD
+      prompt "Custom Audio Board"
+      default ESP32_KORVO_V1_1_BOARD
+      help
+          Select an audio board to use with the ESP-ADF
+  config ESP32_KORVO_V1_1_BOARD
+      bool "ESP32-Korvo v1"
+
+  endchoice
+
+  endmenu
