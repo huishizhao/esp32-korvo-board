@@ -27,8 +27,8 @@
 #include "audio_mem.h"
 
 #include "periph_sdcard.h"
+#include "led_indicator.h"
 #include "periph_adc_button.h"
-#include "led_bar_is31x.h"
 
 static const char *TAG = "AUDIO_BOARD";
 
@@ -43,58 +43,59 @@ audio_board_handle_t audio_board_init(void)
     board_handle = (audio_board_handle_t) audio_calloc(1, sizeof(struct audio_board_handle));
     AUDIO_MEM_CHECK(TAG, board_handle, return NULL);
     board_handle->audio_hal = audio_board_codec_init();
-
+    board_handle->adc_hal = audio_board_adc_init();
     return board_handle;
+}
+
+audio_hal_handle_t audio_board_adc_init(void)
+{
+    audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
+    audio_hal_handle_t adc_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_CODEC_ES7210_DEFAULT_HANDLE);
+    AUDIO_NULL_CHECK(TAG, adc_hal, return NULL);
+    return adc_hal;
 }
 
 audio_hal_handle_t audio_board_codec_init(void)
 {
     audio_hal_codec_config_t audio_codec_cfg = AUDIO_CODEC_DEFAULT_CONFIG();
-    audio_hal_handle_t codec_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_CODEC_ZL38063_DEFAULT_HANDLE);
+    audio_hal_handle_t codec_hal = audio_hal_init(&audio_codec_cfg, &AUDIO_CODEC_ES8311_DEFAULT_HANDLE);
     AUDIO_NULL_CHECK(TAG, codec_hal, return NULL);
     return codec_hal;
 }
 
-display_service_handle_t audio_board_led_init(void)
-{
-    esp_periph_handle_t led = led_bar_is31x_init();
-    AUDIO_NULL_CHECK(TAG, led, return NULL);
-    display_service_config_t display = {
-        .based_cfg = {
-            .task_stack = 0,
-            .task_prio  = 0,
-            .task_core  = 0,
-            .task_func  = NULL,
-            .service_start = NULL,
-            .service_stop = NULL,
-            .service_destroy = NULL,
-            .service_ioctl = led_bar_is31x_pattern,
-            .service_name = "DISPLAY_serv",
-            .user_data = NULL,
-        },
-        .instance = led,
-    };
-
-    return display_service_create(&display);
-}
-
 esp_err_t audio_board_key_init(esp_periph_set_handle_t set)
 {
+    esp_err_t ret = ESP_OK;
     periph_adc_button_cfg_t adc_btn_cfg = PERIPH_ADC_BUTTON_DEFAULT_CONFIG();
     adc_arr_t adc_btn_tag = ADC_DEFAULT_ARR();
+    adc_btn_tag.total_steps = 6;
+    int btn_array[7] = {190, 600, 1000, 1375, 1775, 2195, 3100};
+    adc_btn_tag.adc_level_step = btn_array;
     adc_btn_cfg.arr = &adc_btn_tag;
     adc_btn_cfg.arr_size = 1;
     esp_periph_handle_t adc_btn_handle = periph_adc_button_init(&adc_btn_cfg);
     AUDIO_NULL_CHECK(TAG, adc_btn_handle, return ESP_ERR_ADF_MEMORY_LACK);
-    return esp_periph_start(set, adc_btn_handle);
+    ret = esp_periph_start(set, adc_btn_handle);
+    return ret;
 }
 
 esp_err_t audio_board_sdcard_init(esp_periph_set_handle_t set, periph_sdcard_mode_t mode)
 {
-    if (mode >= SD_MODE_8_LINE) {
-        ESP_LOGE(TAG, "Please select the correct sd mode!, current mode is %d", mode);
+    if (mode != SD_MODE_1_LINE) {
+        ESP_LOGE(TAG, "Current board only support 1-line SD mode!");
         return ESP_FAIL;
     }
+    gpio_config_t sdcard_pwr_pin_cfg = {
+        .pin_bit_mask = 1UL << SDCARD_PWR_CTRL,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+
+    gpio_config(&sdcard_pwr_pin_cfg);
+    gpio_set_level(SDCARD_PWR_CTRL, 0);
+
     periph_sdcard_cfg_t sdcard_cfg = {
         .root = "/sdcard",
         .card_detect_pin = get_sdcard_intr_gpio(), // GPIO_NUM_34
@@ -127,7 +128,8 @@ audio_board_handle_t audio_board_get_handle(void)
 esp_err_t audio_board_deinit(audio_board_handle_t audio_board)
 {
     esp_err_t ret = ESP_OK;
-    ret = audio_hal_deinit(audio_board->audio_hal);
+    ret |= audio_hal_deinit(audio_board->audio_hal);
+    ret |= audio_hal_deinit(audio_board->adc_hal);
     audio_free(audio_board);
     board_handle = NULL;
     return ret;
