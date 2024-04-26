@@ -3,7 +3,7 @@ set(COMPONENT_REQUIRES)
 set(COMPONENT_PRIV_REQUIRES audio_sal audio_hal esp_dispatcher esp_peripherals display_service)
 
 if (CONFIG_ESP32_KORVO_V1_BOARD)
-message(STATUS "Current board name is " CONFIG_ESP32_KORVO_V1_BOARD)
+message(STATUS "Current board name is " CONFIG_ESP32_KORVO_V1_1_BOARD)
 list(APPEND COMPONENT_ADD_INCLUDEDIRS ./esp32_korvo_v1)
 set(COMPONENT_SRCS
 ./esp32_korvo_v1/board.c
